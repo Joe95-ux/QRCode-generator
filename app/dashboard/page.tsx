@@ -162,7 +162,7 @@ export default function DashboardPage() {
         await downloadQRCode.mutateAsync(id);
         toast.success("QR code downloaded!");
       } else {
-        toast.error("QR code data not available");
+        toast.error("QR code data not available. Please try refreshing the page or contact support.");
       }
     } catch (err) {
       console.error("Error downloading QR code:", err);
@@ -316,7 +316,7 @@ export default function DashboardPage() {
                 <select
                   value={filterType}
                   onChange={(e) => setFilterType(e.target.value)}
-                  className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 max-h-32 overflow-y-auto"
                 >
                   <option value="all">All Types</option>
                   <option value="WEBSITE">Website</option>

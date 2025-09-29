@@ -30,7 +30,7 @@ export const useQRCodes = () => {
       return data.qrCodes;
     },
     staleTime: 30 * 1000, // 30 seconds
-    cacheTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 5 * 60 * 1000, // 5 minutes
   });
 };
 
@@ -45,7 +45,7 @@ export const useUserStats = () => {
       return response.json();
     },
     staleTime: 30 * 1000, // 30 seconds
-    cacheTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 2 * 60 * 1000, // 2 minutes
   });
 };
 
@@ -61,7 +61,7 @@ export const useQRCode = (id: string) => {
     },
     enabled: !!id,
     staleTime: 30 * 1000,
-    cacheTime: 5 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
 };
 

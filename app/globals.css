@@ -124,6 +124,12 @@
 /* Custom styles for color picker positioning */
 input[type="color"] {
   position: relative;
+  z-index: 10;
+}
+
+.color-picker {
+  position: relative;
+  z-index: 10;
 }
 
 input[type="color"]::-webkit-color-swatch-wrapper {

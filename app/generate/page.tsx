@@ -3,15 +3,13 @@
 import { useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
-import { generateQRCode, downloadQRCode, saveQRCode } from "@/lib/qr-generator";
+import { generateQRCode, saveQRCode } from "@/lib/qr-generator";
+import QRDesignStep from "@/components/QRDesignStep";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-// Removed unused Tabs imports
-import { Badge } from "@/components/ui/badge";
 import { 
   Globe, 
   FileText, 
@@ -31,11 +29,12 @@ import {
   Mail,
   Phone,
   CheckCircle,
-  Palette,
-  Download,
-  BarChart3
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  QrCode,
 } from "lucide-react";
-import Link from "next/link";
 
 const QR_TYPES = [
   { value: "WEBSITE", label: "Website", icon: Globe, description: "Link to a website" },
@@ -64,6 +63,8 @@ export default function GeneratePage() {
   const [selectedType, setSelectedType] = useState<string>("");
   const [qrContent, setQrContent] = useState("");
   const [qrTitle, setQrTitle] = useState("");
+  const [qrPassword, setQrPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [qrSettings, setQrSettings] = useState({
     size: 256,
     color: "#000000",
@@ -72,19 +73,23 @@ export default function GeneratePage() {
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedQRCode, setGeneratedQRCode] = useState<string>("");
-  // Removed unused qrCodeSaved state
   const [showSuccess, setShowSuccess] = useState(false);
   const [showLoader, setShowLoader] = useState(false);
-  const [isDownloaded, setIsDownloaded] = useState(false);
 
   const handleTypeSelect = (type: string) => {
     setSelectedType(type);
     setCurrentStep(2);
   };
 
-  const handleContentSubmit = () => {
-    if (qrContent.trim()) {
-      setCurrentStep(3);
+  const handleNext = () => {
+    if (currentStep < 3) {
+      setCurrentStep(currentStep + 1);
+    }
+  };
+
+  const handleBack = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
     }
   };
 
@@ -100,219 +105,51 @@ export default function GeneratePage() {
     // Add a minimum loader time to prevent flash
     const minLoaderTime = 1500; // 1.5 seconds minimum
     const startTime = Date.now();
-    
+
     try {
-      const qrCodeDataURL = await generateQRCode({
+      const qrCodeData = await generateQRCode({
         content: qrContent,
-        title: qrTitle || "My QR Code",
+        title: qrTitle,
         type: selectedType,
         settings: qrSettings,
       });
 
-      setGeneratedQRCode(qrCodeDataURL);
-      
-      // Save QR code to database (if user is authenticated)
-      if (isSignedIn) {
-        try {
-          await saveQRCode({
-            content: qrContent,
-            title: qrTitle || "My QR Code",
-            type: selectedType,
-            settings: qrSettings,
-            qrCodeData: qrCodeDataURL,
-          });
-          // QR code saved successfully
-          toast.success("QR code saved to your account!");
-        } catch (saveError) {
-          console.log("QR code not saved:", saveError);
-          toast.error("Failed to save QR code");
-        }
-      }
+      setGeneratedQRCode(qrCodeData);
       
       // Ensure minimum loader time
-      const elapsedTime = Date.now() - startTime;
-      const remainingTime = Math.max(0, minLoaderTime - elapsedTime);
-      
-      if (remainingTime > 0) {
-        await new Promise(resolve => setTimeout(resolve, remainingTime));
+      const elapsed = Date.now() - startTime;
+      if (elapsed < minLoaderTime) {
+        await new Promise(resolve => setTimeout(resolve, minLoaderTime - elapsed));
       }
       
       setShowLoader(false);
-      
-      // Download the QR code
-      const filename = `${qrTitle || "qr-code"}.png`;
-      downloadQRCode(qrCodeDataURL, filename);
-      setIsDownloaded(true);
-      
-      toast.success("QR code generated and downloaded!");
       setShowSuccess(true);
       
+      // Save to database if user is signed in
+      if (isSignedIn) {
+        try {
+          await saveQRCode({
+            title: qrTitle,
+            type: selectedType,
+            content: qrContent,
+            qrCodeData: qrCodeData,
+            settings: qrSettings,
+          });
+        } catch (error) {
+          console.error("Error saving QR code:", error);
+        }
+      }
+      
+      toast.success("QR code generated successfully!");
     } catch (error) {
       console.error("Error generating QR code:", error);
-      toast.error("Failed to generate QR code. Please try again.");
+      toast.error("Failed to generate QR code");
       setShowLoader(false);
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const renderStepIndicator = () => (
-    <div className="flex items-center justify-center mb-8">
-      <div className="flex items-center space-x-4">
-        {[1, 2, 3].map((step) => (
-          <div key={step} className="flex items-center">
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                currentStep >= step
-                  ? "bg-emerald-600 text-white"
-                  : "bg-slate-200 dark:bg-slate-700 text-slate-500"
-              }`}
-            >
-              {currentStep > step ? <CheckCircle className="h-4 w-4" /> : step}
-            </div>
-            {step < 3 && (
-              <div
-                className={`w-16 h-1 ${
-                  currentStep > step ? "bg-emerald-600" : "bg-slate-200 dark:bg-slate-700"
-                }`}
-              />
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  const renderStep1 = () => (
-    <div className="space-y-6">
-      <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold mb-4">Choose QR Code Type</h2>
-        <p className="text-slate-600 dark:text-slate-400">
-          Select the type of content you want to encode in your QR code
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {QR_TYPES.map((type) => {
-          const Icon = type.icon;
-          return (
-            <Card
-              key={type.value}
-              className={`cursor-pointer transition-all hover:shadow-lg ${
-                selectedType === type.value
-                  ? "ring-2 ring-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
-                  : "hover:border-emerald-300"
-              }`}
-              onClick={() => handleTypeSelect(type.value)}
-            >
-              <CardContent className="p-4 text-center">
-                <Icon className="h-8 w-8 mx-auto mb-2 text-emerald-600" />
-                <h3 className="font-semibold text-sm mb-1">{type.label}</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {type.description}
-                </p>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-    </div>
-  );
-
-  const renderStep2 = () => {
-    const selectedTypeData = QR_TYPES.find(t => t.value === selectedType);
-    
-    return (
-      <div className="space-y-6">
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold mb-4">Add Your Content</h2>
-          <p className="text-slate-600 dark:text-slate-400">
-            Enter the content for your {selectedTypeData?.label.toLowerCase()} QR code
-          </p>
-        </div>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="space-y-4">
-              <div className="space-y-3">
-                <Label htmlFor="title">QR Code Title (Optional)</Label>
-                <Input
-                  id="title"
-                  placeholder="My QR Code"
-                  value={qrTitle}
-                  onChange={(e) => setQrTitle(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-3">
-                <Label htmlFor="content">
-                  {selectedType === "WEBSITE" && "Website URL"}
-                  {selectedType === "TEXT" && "Text Content"}
-                  {selectedType === "EMAIL" && "Email Address"}
-                  {selectedType === "PHONE" && "Phone Number"}
-                  {selectedType === "SMS" && "Phone Number"}
-                  {selectedType === "VCARD" && "Contact Information"}
-                  {selectedType === "BUSINESS" && "Business Information"}
-                  {selectedType === "WIFI" && "WiFi Details"}
-                  {selectedType === "FACEBOOK" && "Facebook URL"}
-                  {selectedType === "INSTAGRAM" && "Instagram URL"}
-                  {selectedType === "WHATSAPP" && "WhatsApp Number"}
-                  {selectedType === "VIDEO" && "Video URL"}
-                  {selectedType === "IMAGE" && "Image URL"}
-                  {selectedType === "MP3" && "Audio URL"}
-                  {selectedType === "MENU" && "Menu URL"}
-                  {selectedType === "APP" && "App Store URL"}
-                  {selectedType === "COUPON" && "Coupon Code"}
-                  {selectedType === "PDF" && "PDF URL"}
-                </Label>
-                {selectedType === "SMS" ? (
-                  <div className="space-y-3">
-                    <div className="space-y-3">
-                      <Label htmlFor="phone">Phone Number</Label>
-                      <Input
-                        id="phone"
-                        placeholder="Phone number"
-                        value={qrContent}
-                        onChange={(e) => setQrContent(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-3">
-                      <Label htmlFor="message">Message Content</Label>
-                      <Textarea
-                        id="message"
-                        placeholder="Message content"
-                        rows={3}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <Input
-                    placeholder={
-                      selectedType === "WEBSITE" ? "https://example.com" :
-                      selectedType === "EMAIL" ? "user@example.com" :
-                      selectedType === "PHONE" ? "+1234567890" :
-                      selectedType === "TEXT" ? "Your text here" :
-                      "Enter your content"
-                    }
-                    value={qrContent}
-                    onChange={(e) => setQrContent(e.target.value)}
-                  />
-                )}
-              </div>
-
-              <Button 
-                onClick={handleContentSubmit}
-                disabled={!qrContent.trim()}
-                className="w-full"
-              >
-                Continue to Design
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  };
 
   const renderQRScannerLoader = () => (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
@@ -367,243 +204,353 @@ export default function GeneratePage() {
     </div>
   );
 
-  const renderStep3 = () => (
-    <div className="space-y-6">
-      <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold mb-4">Customize Your QR Code</h2>
-        <p className="text-slate-600 dark:text-slate-400">
-          Design your QR code with custom colors and settings
-        </p>
-      </div>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 py-8">
+      <div className="container mx-auto px-4 max-w-7xl">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-2">
+            Create QR Code
+          </h1>
+          <p className="text-slate-600 dark:text-slate-400">
+            Generate custom QR codes for your content
+          </p>
+        </div>
 
-      <div className="grid lg:grid-cols-2 gap-8">
-        {/* Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Palette className="h-5 w-5" />
-              Design Settings
-            </CardTitle>
-            <CardDescription>
-              Customize the appearance of your QR code
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-3">
-              <Label htmlFor="size">Size</Label>
-              <Select
-                value={qrSettings.size.toString()}
-                onValueChange={(value) => setQrSettings(prev => ({ ...prev, size: parseInt(value) }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="128">128x128</SelectItem>
-                  <SelectItem value="256">256x256</SelectItem>
-                  <SelectItem value="512">512x512</SelectItem>
-                  <SelectItem value="1024">1024x1024</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-3">
-              <Label htmlFor="color">QR Code Color</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="color"
-                  value={qrSettings.color}
-                  onChange={(e) => setQrSettings(prev => ({ ...prev, color: e.target.value }))}
-                  className="w-16 h-10"
-                />
-                <Input
-                  value={qrSettings.color}
-                  onChange={(e) => setQrSettings(prev => ({ ...prev, color: e.target.value }))}
-                  placeholder="#000000"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <Label htmlFor="bgColor">Background Color</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="color"
-                  value={qrSettings.backgroundColor}
-                  onChange={(e) => setQrSettings(prev => ({ ...prev, backgroundColor: e.target.value }))}
-                  className="w-16 h-10"
-                />
-                <Input
-                  value={qrSettings.backgroundColor}
-                  onChange={(e) => setQrSettings(prev => ({ ...prev, backgroundColor: e.target.value }))}
-                  placeholder="#ffffff"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <Label htmlFor="errorCorrection">Error Correction</Label>
-              <Select
-                value={qrSettings.errorCorrection}
-                onValueChange={(value: "L" | "M" | "Q" | "H") => setQrSettings(prev => ({ ...prev, errorCorrection: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="L">Low (7%)</SelectItem>
-                  <SelectItem value="M">Medium (15%)</SelectItem>
-                  <SelectItem value="Q">Quartile (25%)</SelectItem>
-                  <SelectItem value="H">High (30%)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Preview */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Preview</CardTitle>
-            <CardDescription>
-              Your QR code will appear here
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col items-center space-y-4">
-            <div 
-              className="bg-slate-100 dark:bg-slate-800 rounded-lg p-8 flex items-center justify-center"
-              style={{ width: qrSettings.size, height: qrSettings.size }}
-            >
-              {generatedQRCode ? (
-                <div className="w-full h-full flex items-center justify-center">
-                  <div className="w-32 h-32 bg-slate-800 dark:bg-slate-200 rounded grid grid-cols-8 gap-1 p-2">
-                    {Array.from({ length: 64 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className={`bg-slate-200 dark:bg-slate-800 ${
-                          Math.random() > 0.5 ? "opacity-100" : "opacity-30"
-                        }`}
-                      />
-                    ))}
+        {/* Enhanced Step Indicators with Long Arrows */}
+        <div className="mb-8">
+          <div className="flex items-center justify-center">
+            <div className="flex items-center space-x-8">
+              {[
+                { step: 1, title: "Type of QR code", completed: currentStep > 1, active: currentStep === 1 },
+                { step: 2, title: "Content", completed: currentStep > 2, active: currentStep === 2 },
+                { step: 3, title: "QR design", completed: currentStep > 3, active: currentStep === 3 }
+              ].map(({ step, title, completed, active }, index) => (
+                <div key={step} className="flex items-center">
+                  <div className="flex items-center">
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all duration-300 ${
+                        completed
+                          ? "bg-emerald-600 text-white"
+                          : active
+                          ? "bg-emerald-600 text-white"
+                          : "bg-gray-300 text-gray-600"
+                      }`}
+                    >
+                      {completed ? "✓" : step}
+                    </div>
+                    <span className={`ml-3 font-semibold transition-colors ${
+                      completed || active
+                        ? "text-emerald-600"
+                        : "text-gray-500"
+                    }`}>
+                      {title}
+                    </span>
                   </div>
+                  {index < 2 && (
+                    <div className="flex items-center ml-8">
+                      <div className="w-16 h-0.5 bg-gray-300 relative">
+                        <div 
+                          className={`h-full bg-emerald-600 transition-all duration-500 ${
+                            completed ? "w-full" : "w-0"
+                          }`}
+                        />
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-gray-400 ml-2" />
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="text-slate-400 text-center">
-                  <div className="w-16 h-16 mx-auto mb-2 bg-slate-300 dark:bg-slate-600 rounded"></div>
-                  <p className="text-sm">QR Code Preview</p>
-                </div>
-              )}
-            </div>
-            
-            <div className="text-center">
-              <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">
-                {qrTitle || "Untitled QR Code"}
-              </p>
-              <Badge variant="secondary">
-                {QR_TYPES.find(t => t.value === selectedType)?.label}
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-4 justify-center">
-        {!isDownloaded ? (
-          <Button 
-            onClick={handleCreate} 
-            size="lg" 
-            className="px-8"
-            disabled={isGenerating}
-          >
-            {isGenerating ? (
-              <>
-                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                Generating...
-              </>
-            ) : (
-              <>
-                <Download className="mr-2 h-4 w-4" />
-                Create QR Code
-              </>
-            )}
-          </Button>
-        ) : (
-          <Button 
-            onClick={() => {
-              if (generatedQRCode) {
-                const filename = `${qrTitle || "qr-code"}.png`;
-                downloadQRCode(generatedQRCode, filename);
-                toast.success("QR code downloaded again!");
-              }
-            }}
-            size="lg" 
-            className="px-8"
-            disabled={true}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            QR Code Downloaded
-          </Button>
-        )}
-        
-        {isDownloaded && isSignedIn && (
-          <Button 
-            asChild
-            size="lg" 
-            variant="outline"
-            className="px-8"
-          >
-            <Link href="/dashboard">
-              <BarChart3 className="mr-2 h-4 w-4" />
-              Manage QR Codes
-            </Link>
-          </Button>
-        )}
-        
-        {isDownloaded && !isSignedIn && (
-          <Button 
-            asChild
-            size="lg" 
-            variant="outline"
-            className="px-8"
-          >
-            <Link href="/sign-up">
-              <User className="mr-2 h-4 w-4" />
-              Create Account
-            </Link>
-          </Button>
-        )}
-      </div>
-
-      {showSuccess && (
-        <div className="mt-8 p-6 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
-          <div className="flex items-center gap-3">
-            <CheckCircle className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
-            <div>
-              <h3 className="font-semibold text-emerald-900 dark:text-emerald-100">
-                QR Code Created Successfully!
-              </h3>
-              <p className="text-sm text-emerald-700 dark:text-emerald-300">
-                Your QR code has been generated and downloaded. 
-                {isSignedIn ? " It's also been saved to your account." : " Create an account to save and manage your QR codes."}
-              </p>
+              ))}
             </div>
           </div>
         </div>
-      )}
-    </div>
-  );
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 py-8">
-      <div className="container mx-auto px-4 max-w-6xl">
-        {renderStepIndicator()}
-        
-        {currentStep === 1 && renderStep1()}
-        {currentStep === 2 && renderStep2()}
-        {currentStep === 3 && renderStep3()}
+        {/* Success Message */}
+        {showSuccess && (
+          <Card className="mb-8 border-emerald-200 bg-emerald-50 dark:bg-emerald-900/20 dark:border-emerald-800">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <CheckCircle className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                <div>
+                  <h3 className="font-semibold text-emerald-900 dark:text-emerald-100">
+                    QR Code Created Successfully!
+                  </h3>
+                  <p className="text-sm text-emerald-700 dark:text-emerald-300">
+                    Your QR code has been generated and is ready to use.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Step 1: Choose Type */}
+        {currentStep === 1 && (
+          <div className="space-y-12">
+            <div className="text-center">
+              <h2 className="text-3xl font-bold mb-4">Choose QR Code Type</h2>
+              <p className="text-slate-600 dark:text-slate-400 text-lg">
+                Select the type of content you want to encode in your QR code
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {QR_TYPES.map((type) => {
+                const Icon = type.icon;
+                return (
+                  <Card
+                    key={type.value}
+                    className={`cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-105 ${
+                      selectedType === type.value
+                        ? "ring-2 ring-emerald-500 bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 shadow-lg"
+                        : "hover:border-emerald-300 hover:shadow-lg"
+                    }`}
+                    onClick={() => handleTypeSelect(type.value)}
+                  >
+                    <CardContent className="p-6 text-center">
+                      <Icon className="h-10 w-10 mx-auto mb-3 text-emerald-600" />
+                      <h3 className="font-semibold text-sm mb-2">{type.label}</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                        {type.description}
+                      </p>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Add Content */}
+        {currentStep === 2 && (
+          <div className="grid lg:grid-cols-12 gap-8 mb-8">
+            {/* Content Form - 65% width */}
+            <div className="lg:col-span-8">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    2. Add Your Content
+                  </CardTitle>
+                  <CardDescription>
+                    Enter the information you want to encode in your QR code
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-3">
+                    <Label htmlFor="title">Title</Label>
+                    <Input
+                      id="title"
+                      value={qrTitle}
+                      onChange={(e) => setQrTitle(e.target.value)}
+                      placeholder="Enter a title for your QR code"
+                    />
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label htmlFor="content">Content</Label>
+                    {selectedType === "SMS" ? (
+                      <Textarea
+                        id="content"
+                        value={qrContent}
+                        onChange={(e) => setQrContent(e.target.value)}
+                        placeholder="Enter your message content"
+                        rows={3}
+                      />
+                    ) : (
+                      <Input
+                        id="content"
+                        value={qrContent}
+                        onChange={(e) => setQrContent(e.target.value)}
+                        placeholder="Enter your content"
+                      />
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label htmlFor="password">Password (Optional)</Label>
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        value={qrPassword}
+                        onChange={(e) => setQrPassword(e.target.value)}
+                        placeholder="Enter password to protect QR code"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Preview - 35% width */}
+            <div className="lg:col-span-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Preview</CardTitle>
+                  <CardDescription>
+                    See how your QR code will look
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {/* Mobile Phone Mockup */}
+                  <div className="w-80 h-96 bg-white dark:bg-slate-800 rounded-3xl p-4 shadow-2xl mx-auto">
+                    <div className="w-full h-full bg-slate-100 dark:bg-slate-700 rounded-2xl p-6 flex flex-col items-center justify-center space-y-4">
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mb-2">9:41</div>
+                      
+                      <div className="bg-white dark:bg-slate-800 rounded-lg p-4 shadow-lg">
+                        {generatedQRCode ? (
+                          <img 
+                            src={generatedQRCode} 
+                            alt="QR Code Preview" 
+                            className="w-32 h-32"
+                          />
+                        ) : (
+                          <div className="w-32 h-32 bg-slate-200 dark:bg-slate-600 rounded flex items-center justify-center">
+                            <div className="text-slate-400 text-center">
+                              <div className="w-16 h-16 mx-auto mb-2 bg-slate-300 dark:bg-slate-600 rounded"></div>
+                              <p className="text-sm">QR Code</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="text-center">
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                          {qrTitle || "Your QR Code"}
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {selectedType ? QR_TYPES.find(t => t.value === selectedType)?.label : "Type"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Design */}
+        {currentStep === 3 && (
+          <div className="grid lg:grid-cols-12 gap-8 mb-8">
+            {/* Design Options - 65% width */}
+            <div className="lg:col-span-8">
+              <QRDesignStep
+                settings={qrSettings}
+                onSettingsChange={setQrSettings}
+                qrCodePreview={generatedQRCode}
+              />
+            </div>
+
+            {/* Fixed Preview - 35% width */}
+            <div className="lg:col-span-4">
+              <Card className="sticky top-4">
+                <CardHeader>
+                  <CardTitle>Preview</CardTitle>
+                  <CardDescription>
+                    See how your QR code will look
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {/* Mobile Phone Mockup */}
+                  <div className="w-80 h-96 bg-white dark:bg-slate-800 rounded-3xl p-4 shadow-2xl mx-auto">
+                    <div className="w-full h-full bg-slate-100 dark:bg-slate-700 rounded-2xl p-6 flex flex-col items-center justify-center space-y-4">
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mb-2">9:41</div>
+                      
+                      <div className="bg-white dark:bg-slate-800 rounded-lg p-4 shadow-lg">
+                        {generatedQRCode ? (
+                          <img 
+                            src={generatedQRCode} 
+                            alt="QR Code Preview" 
+                            className="w-32 h-32"
+                          />
+                        ) : (
+                          <div className="w-32 h-32 bg-slate-200 dark:bg-slate-600 rounded flex items-center justify-center">
+                            <div className="text-slate-400 text-center">
+                              <div className="w-16 h-16 mx-auto mb-2 bg-slate-300 dark:bg-slate-600 rounded"></div>
+                              <p className="text-sm">QR Code</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="text-center">
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                          {qrTitle || "Your QR Code"}
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {selectedType ? QR_TYPES.find(t => t.value === selectedType)?.label : "Type"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {/* Navigation */}
+        <div className="flex justify-between items-center">
+          <Button 
+            variant="outline" 
+            onClick={handleBack}
+            disabled={currentStep === 1}
+            className="flex items-center gap-2"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Back
+          </Button>
+
+          <div className="flex gap-2">
+            {currentStep === 3 ? (
+              <Button 
+                onClick={handleCreate} 
+                disabled={isGenerating} 
+                className="flex items-center gap-2"
+              >
+                {isGenerating ? (
+                  <>
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <QrCode className="h-4 w-4" />
+                    Create QR Code
+                  </>
+                )}
+              </Button>
+            ) : (
+              <Button 
+                onClick={handleNext}
+                disabled={currentStep === 2 && !qrContent.trim()}
+                className="flex items-center gap-2"
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* QR Code Scanner Loader */}
+        {showLoader && renderQRScannerLoader()}
       </div>
-      
-      {showLoader && renderQRScannerLoader()}
     </div>
   );
 }

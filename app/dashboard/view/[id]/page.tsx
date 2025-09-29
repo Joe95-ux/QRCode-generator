@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQRCode } from "@/hooks/use-qr-codes";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Download, Share2, Copy, BarChart3 } from "lucide-react";
+import { ArrowLeft, Download, Copy, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 import { downloadQRCode } from "@/lib/qr-generator";
 
@@ -87,11 +87,16 @@ export default function ViewQRCodePage() {
     return null;
   }
 
+  // Type cast the QR code data
+  const typedQRCode = qrCode as QRCodeData;
+
   const handleDownload = () => {
-    if (qrCode?.qrCodeData) {
-      const filename = `${qrCode.title}.png`;
-      downloadQRCode(qrCode.qrCodeData, filename);
+    if (typedQRCode?.qrCodeData) {
+      const filename = `${typedQRCode.title}.png`;
+      downloadQRCode(typedQRCode.qrCodeData, filename);
       toast.success("QR code downloaded!");
+    } else {
+      toast.error("QR code data not available. Please try refreshing the page.");
     }
   };
 
@@ -100,22 +105,22 @@ export default function ViewQRCodePage() {
     toast.success("Link copied to clipboard!");
   };
 
-  const handleShare = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: qrCode?.title || "QR Code",
-          text: `Check out this QR code: ${qrCode?.title}`,
-          url: window.location.href,
-        });
-      } catch (error) {
-        console.log("Error sharing:", error);
-        handleCopyLink();
-      }
-    } else {
-      handleCopyLink();
-    }
-  };
+  // const handleShare = async () => {
+  //   if (navigator.share) {
+  //     try {
+  //       await navigator.share({
+  //         title: typedQRCode?.title || "QR Code",
+  //         text: `Check out this QR code: ${typedQRCode?.title}`,
+  //         url: window.location.href,
+  //       });
+  //     } catch (error) {
+  //       console.log("Error sharing:", error);
+  //       handleCopyLink();
+  //     }
+  //   } else {
+  //     handleCopyLink();
+  //   }
+  // };
 
   if (isLoading) {
     return (
@@ -128,7 +133,7 @@ export default function ViewQRCodePage() {
     );
   }
 
-  if (!qrCode) {
+  if (!typedQRCode) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
         <div className="text-center">
@@ -156,11 +161,11 @@ export default function ViewQRCodePage() {
           </Button>
           
           <div className="flex items-center gap-2">
-            <Badge className={getTypeColor(qrCode.type)}>
-              {getTypeLabel(qrCode.type)}
+            <Badge className={getTypeColor(typedQRCode.type)}>
+              {getTypeLabel(typedQRCode.type)}
             </Badge>
             <Badge variant="outline">
-              {qrCode.settings.size}x{qrCode.settings.size}
+              {typedQRCode.settings.size}x{typedQRCode.settings.size}
             </Badge>
           </div>
         </div>
@@ -176,17 +181,17 @@ export default function ViewQRCodePage() {
             </CardHeader>
             <CardContent className="flex flex-col items-center space-y-6">
               <div className="bg-white dark:bg-slate-800 rounded-lg p-8 shadow-lg">
-                <div 
-                  className="flex items-center justify-center"
-                  style={{ width: Math.min(qrCode.settings.size, 400), height: Math.min(qrCode.settings.size, 400) }}
-                >
-                  {qrCode.qrCodeData ? (
-                    <img 
-                      src={qrCode.qrCodeData} 
-                      alt={`QR Code for ${qrCode.title}`}
-                      className="max-w-full max-h-full"
-                    />
-                  ) : (
+              <div 
+                className="flex items-center justify-center"
+                style={{ width: Math.min(typedQRCode.settings.size, 400), height: Math.min(typedQRCode.settings.size, 400) }}
+              >
+                {typedQRCode.qrCodeData ? (
+                  <Image 
+                    src={typedQRCode.qrCodeData} 
+                    alt={`QR Code for ${typedQRCode.title}`}
+                    className="max-w-full max-h-full"
+                  />
+                ) : (
                     <div className="w-32 h-32 bg-slate-100 dark:bg-slate-700 rounded flex items-center justify-center">
                       <div className="text-slate-400 text-center">
                         <div className="w-16 h-16 mx-auto mb-2 bg-slate-300 dark:bg-slate-600 rounded"></div>
@@ -197,16 +202,16 @@ export default function ViewQRCodePage() {
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-3 w-full">
-                <Button onClick={handleDownload} className="flex-1">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
+                <Button onClick={handleDownload} className="w-full">
                   <Download className="mr-2 h-4 w-4" />
                   Download PNG
                 </Button>
-                <Button variant="outline" onClick={handleShare} className="flex-1">
+                {/* <Button variant="outline" onClick={handleShare} className="w-full">
                   <Share2 className="mr-2 h-4 w-4" />
                   Share
-                </Button>
-                <Button variant="outline" onClick={handleCopyLink} className="flex-1">
+                </Button> */}
+                <Button variant="outline" onClick={handleCopyLink} className="w-full">
                   <Copy className="mr-2 h-4 w-4" />
                   Copy Link
                 </Button>
@@ -225,7 +230,7 @@ export default function ViewQRCodePage() {
                   <label className="text-sm font-medium text-slate-600 dark:text-slate-400">
                     Title
                   </label>
-                  <p className="text-slate-900 dark:text-slate-100">{qrCode.title}</p>
+                  <p className="text-slate-900 dark:text-slate-100">{typedQRCode.title}</p>
                 </div>
                 
                 <div>
@@ -233,7 +238,7 @@ export default function ViewQRCodePage() {
                     Content
                   </label>
                   <p className="text-slate-900 dark:text-slate-100 break-all">
-                    {qrCode.content}
+                    {typedQRCode.content}
                   </p>
                 </div>
                 
@@ -241,7 +246,7 @@ export default function ViewQRCodePage() {
                   <label className="text-sm font-medium text-slate-600 dark:text-slate-400">
                     Type
                   </label>
-                  <p className="text-slate-900 dark:text-slate-100">{getTypeLabel(qrCode.type)}</p>
+                  <p className="text-slate-900 dark:text-slate-100">{getTypeLabel(typedQRCode.type)}</p>
                 </div>
                 
                 <div>
@@ -249,7 +254,7 @@ export default function ViewQRCodePage() {
                     Size
                   </label>
                   <p className="text-slate-900 dark:text-slate-100">
-                    {qrCode.settings.size}x{qrCode.settings.size} pixels
+                    {typedQRCode.settings.size}x{typedQRCode.settings.size} pixels
                   </p>
                 </div>
                 
@@ -258,7 +263,7 @@ export default function ViewQRCodePage() {
                     Created
                   </label>
                   <p className="text-slate-900 dark:text-slate-100">
-                    {new Date(qrCode.createdAt).toLocaleDateString()}
+                    {new Date(typedQRCode.createdAt).toLocaleDateString()}
                   </p>
                 </div>
               </CardContent>
@@ -278,7 +283,7 @@ export default function ViewQRCodePage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="text-center p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
                     <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                      {qrCode.scanCount}
+                      {typedQRCode.scanCount}
                     </div>
                     <div className="text-sm text-slate-600 dark:text-slate-400">
                       Scans
@@ -286,7 +291,7 @@ export default function ViewQRCodePage() {
                   </div>
                   <div className="text-center p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
                     <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                      {qrCode.downloadCount}
+                      {typedQRCode.downloadCount}
                     </div>
                     <div className="text-sm text-slate-600 dark:text-slate-400">
                       Downloads
