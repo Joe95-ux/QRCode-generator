@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQRCodes, useUserStats, useDeleteQRCode, useDownloadQRCode } from "@/hooks/use-qr-codes";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,13 +33,28 @@ import {
   QrCode,
   BarChart3,
   TrendingUp,
-  Users,
-  Calendar,
-  Search,
-  Filter
+  Search
 } from "lucide-react";
 
 // Remove mock data - we'll use real data from API
+
+interface QRCode {
+  id: string;
+  title: string;
+  type: string;
+  content: string;
+  qrCodeData?: string;
+  downloadCount: number;
+  scanCount: number;
+  createdAt: string;
+}
+
+interface UserStats {
+  totalQRCodes: number;
+  totalDownloads: number;
+  totalScans: number;
+  thisMonth: number;
+}
 
 export default function DashboardPage() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -46,10 +62,66 @@ export default function DashboardPage() {
   
   const { data: qrCodes = [], isLoading: qrCodesLoading } = useQRCodes();
   const { data: stats, isLoading: statsLoading } = useUserStats();
+  
+  const typedQRCodes = qrCodes as QRCode[];
+  const typedStats = stats as UserStats | undefined;
   const deleteQRCode = useDeleteQRCode();
   const downloadQRCode = useDownloadQRCode();
 
-  const filteredQRCodes = qrCodes.filter(qr => {
+  if (qrCodesLoading || statsLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="mb-8">
+            <Skeleton className="h-8 w-64 mb-2" />
+            <Skeleton className="h-4 w-96" />
+          </div>
+          
+          {/* KPI Cards Skeleton */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            {[...Array(4)].map((_, i) => (
+              <Card key={i}>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-20" />
+                      <Skeleton className="h-8 w-16" />
+                    </div>
+                    <Skeleton className="h-8 w-8 rounded" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Table Skeleton */}
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-6 w-48 mb-2" />
+              <Skeleton className="h-4 w-64" />
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="flex items-center space-x-4">
+                    <Skeleton className="h-12 w-12 rounded" />
+                    <div className="space-y-2 flex-1">
+                      <Skeleton className="h-4 w-32" />
+                      <Skeleton className="h-3 w-24" />
+                    </div>
+                    <Skeleton className="h-6 w-16 rounded-full" />
+                    <Skeleton className="h-8 w-20" />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  const filteredQRCodes = typedQRCodes.filter((qr) => {
     const matchesSearch = qr.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          qr.content.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = filterType === "all" || qr.type === filterType;
@@ -61,7 +133,7 @@ export default function DashboardPage() {
       try {
         await deleteQRCode.mutateAsync(id);
         toast.success("QR code deleted successfully");
-      } catch (error) {
+      } catch {
         toast.error("Failed to delete QR code");
       }
     }
@@ -69,10 +141,32 @@ export default function DashboardPage() {
 
   const handleDownload = async (id: string) => {
     try {
-      await downloadQRCode.mutateAsync(id);
-      toast.success("Download count updated");
-    } catch (error) {
-      toast.error("Failed to update download count");
+      // Find the QR code to get its data
+      const qrCode = typedQRCodes.find((qr) => qr.id === id);
+      if (!qrCode) {
+        toast.error("QR code not found");
+        return;
+      }
+
+      // First download the actual QR code file
+      if (qrCode.qrCodeData) {
+        const filename = `${qrCode.title || "qr-code"}.png`;
+        const link = document.createElement('a');
+        link.href = qrCode.qrCodeData;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Then update the download count
+        await downloadQRCode.mutateAsync(id);
+        toast.success("QR code downloaded!");
+      } else {
+        toast.error("QR code data not available");
+      }
+    } catch (err) {
+      console.error("Error downloading QR code:", err);
+      toast.error("Failed to download QR code");
     }
   };
 
@@ -109,7 +203,7 @@ export default function DashboardPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-              Dashboard
+              My QR Codes
             </h1>
             <p className="text-slate-600 dark:text-slate-400 mt-1">
               Manage your QR codes and track performance
@@ -136,7 +230,7 @@ export default function DashboardPage() {
                     Total QR Codes
                   </p>
                   <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                    {stats?.totalQRCodes || 0}
+                    {typedStats?.totalQRCodes || 0}
                   </p>
                 </div>
               </div>
@@ -154,7 +248,7 @@ export default function DashboardPage() {
                     Downloads
                   </p>
                   <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                    {stats?.totalDownloads || 0}
+                    {typedStats?.totalDownloads || 0}
                   </p>
                 </div>
               </div>
@@ -172,7 +266,7 @@ export default function DashboardPage() {
                     Total Scans
                   </p>
                   <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                    {stats?.totalScans || 0}
+                    {typedStats?.totalScans || 0}
                   </p>
                 </div>
               </div>
@@ -190,7 +284,7 @@ export default function DashboardPage() {
                     This Month
                   </p>
                   <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                    {stats?.thisMonth || 0}
+                    {typedStats?.thisMonth || 0}
                   </p>
                 </div>
               </div>
@@ -226,12 +320,23 @@ export default function DashboardPage() {
                 >
                   <option value="all">All Types</option>
                   <option value="WEBSITE">Website</option>
-                  <option value="VCARD">vCard</option>
-                  <option value="WIFI">WiFi</option>
                   <option value="TEXT">Text</option>
                   <option value="EMAIL">Email</option>
                   <option value="PHONE">Phone</option>
                   <option value="SMS">SMS</option>
+                  <option value="VCARD">vCard</option>
+                  <option value="BUSINESS">Business</option>
+                  <option value="WIFI">WiFi</option>
+                  <option value="FACEBOOK">Facebook</option>
+                  <option value="INSTAGRAM">Instagram</option>
+                  <option value="WHATSAPP">WhatsApp</option>
+                  <option value="VIDEO">Video</option>
+                  <option value="IMAGE">Image</option>
+                  <option value="MP3">Audio</option>
+                  <option value="MENU">Menu</option>
+                  <option value="APP">App</option>
+                  <option value="COUPON">Coupon</option>
+                  <option value="PDF">PDF</option>
                 </select>
               </div>
             </div>
@@ -255,8 +360,16 @@ export default function DashboardPage() {
                   {filteredQRCodes.map((qr) => (
                     <TableRow key={qr.id}>
                       <TableCell>
-                        <div className="w-12 h-12 bg-slate-100 dark:bg-slate-700 rounded flex items-center justify-center">
-                          <QrCode className="h-6 w-6 text-slate-400" />
+                        <div className="w-12 h-12 bg-slate-100 dark:bg-slate-700 rounded flex items-center justify-center overflow-hidden">
+                          {qr.qrCodeData ? (
+                            <img 
+                              src={qr.qrCodeData} 
+                              alt={`QR Code for ${qr.title}`}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <QrCode className="h-6 w-6 text-slate-400" />
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="font-medium">{qr.title}</TableCell>
@@ -281,17 +394,21 @@ export default function DashboardPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
-                              <Eye className="mr-2 h-4 w-4" />
-                              View
+                            <DropdownMenuItem asChild>
+                              <Link href={`/dashboard/view/${qr.id}`}>
+                                <Eye className="mr-2 h-4 w-4" />
+                                View
+                              </Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleDownload(qr.id)}>
                               <Download className="mr-2 h-4 w-4" />
                               Download
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Edit className="mr-2 h-4 w-4" />
-                              Edit
+                            <DropdownMenuItem asChild>
+                              <Link href={`/dashboard/edit/${qr.id}`}>
+                                <Edit className="mr-2 h-4 w-4" />
+                                Edit
+                              </Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem 
                               className="text-red-600 dark:text-red-400"
@@ -348,27 +465,30 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">QR code "My Website" was scanned</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">2 hours ago</p>
+                {typedQRCodes.length > 0 ? (
+                  typedQRCodes.slice(0, 3).map((qr, index) => (
+                    <div key={qr.id} className="flex items-center gap-3">
+                      <div className={`w-2 h-2 rounded-full ${
+                        index === 0 ? 'bg-emerald-500' : 
+                        index === 1 ? 'bg-blue-500' : 'bg-purple-500'
+                      }`}></div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">
+                          QR code &ldquo;{qr.title}&rdquo; {index === 0 ? 'was scanned' : index === 1 ? 'was downloaded' : 'created'}
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {new Date(qr.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-4">
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      No recent activity
+                    </p>
                   </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">QR code "Business Card" was downloaded</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">5 hours ago</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">New QR code "WiFi Network" created</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">1 day ago</p>
-                  </div>
-                </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -387,19 +507,30 @@ export default function DashboardPage() {
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-slate-600 dark:text-slate-400">Most Popular</span>
-                  <span className="font-medium">WiFi Network</span>
+                  <span className="font-medium">
+                    {typedQRCodes.length > 0 ? 
+                      typedQRCodes.reduce((prev, current) => 
+                        (prev.scanCount + prev.downloadCount) > (current.scanCount + current.downloadCount) ? prev : current
+                      ).title : 'N/A'
+                    }
+                  </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-slate-600 dark:text-slate-400">Total Scans</span>
-                  <span className="font-medium">35</span>
+                  <span className="font-medium">{typedStats?.totalScans || 0}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-slate-600 dark:text-slate-400">Avg. Scans/Day</span>
-                  <span className="font-medium">2.3</span>
+                  <span className="font-medium">
+                    {typedStats?.totalScans ? (typedStats.totalScans / 30).toFixed(1) : '0.0'}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-slate-600 dark:text-slate-400">Success Rate</span>
-                  <span className="font-medium text-emerald-600 dark:text-emerald-400">98%</span>
+                  <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                    {typedStats?.totalScans && typedStats.totalDownloads ? 
+                      Math.round((typedStats.totalScans / (typedStats.totalScans + typedStats.totalDownloads)) * 100) : 0}%
+                  </span>
                 </div>
               </div>
             </CardContent>

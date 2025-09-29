@@ -4,7 +4,7 @@ import prisma from "@/lib/prisma";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { userId } = await auth();
@@ -15,6 +15,8 @@ export async function POST(
         { status: 401 }
       );
     }
+
+    const { id } = await params;
 
     const user = await prisma.user.findUnique({
       where: { clerkId: userId }
@@ -29,7 +31,7 @@ export async function POST(
 
     const qrCode = await prisma.qRCode.findFirst({
       where: {
-        id: params.id,
+        id: id,
         userId: user.id
       }
     });
@@ -43,7 +45,7 @@ export async function POST(
 
     // Increment download count
     await prisma.qRCode.update({
-      where: { id: params.id },
+      where: { id: id },
       data: {
         downloadCount: {
           increment: 1

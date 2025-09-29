@@ -5,6 +5,7 @@ export interface QRCode {
   title: string;
   type: string;
   content: string;
+  qrCodeData?: string;
   downloadCount: number;
   scanCount: number;
   createdAt: string;
@@ -28,6 +29,8 @@ export const useQRCodes = () => {
       const data = await response.json();
       return data.qrCodes;
     },
+    staleTime: 30 * 1000, // 30 seconds
+    cacheTime: 5 * 60 * 1000, // 5 minutes
   });
 };
 
@@ -41,6 +44,24 @@ export const useUserStats = () => {
       }
       return response.json();
     },
+    staleTime: 30 * 1000, // 30 seconds
+    cacheTime: 2 * 60 * 1000, // 2 minutes
+  });
+};
+
+export const useQRCode = (id: string) => {
+  return useQuery<QRCode>({
+    queryKey: ["qr-code", id],
+    queryFn: async () => {
+      const response = await fetch(`/api/qr/${id}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch QR code");
+      }
+      return response.json();
+    },
+    enabled: !!id,
+    staleTime: 30 * 1000,
+    cacheTime: 5 * 60 * 1000,
   });
 };
 
@@ -57,9 +78,10 @@ export const useDeleteQRCode = () => {
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ["qr-codes"] });
       queryClient.invalidateQueries({ queryKey: ["user-stats"] });
+      queryClient.removeQueries({ queryKey: ["qr-code", id] });
     },
   });
 };
@@ -79,6 +101,31 @@ export const useDownloadQRCode = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["qr-codes"] });
+      queryClient.invalidateQueries({ queryKey: ["user-stats"] });
+    },
+  });
+};
+
+export const useUpdateQRCode = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<QRCode> }) => {
+      const response = await fetch(`/api/qr/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to update QR code");
+      }
+      return response.json();
+    },
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["qr-codes"] });
+      queryClient.invalidateQueries({ queryKey: ["qr-code", id] });
       queryClient.invalidateQueries({ queryKey: ["user-stats"] });
     },
   });

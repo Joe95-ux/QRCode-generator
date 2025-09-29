@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useUser } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import { generateQRCode, downloadQRCode, saveQRCode } from "@/lib/qr-generator";
 import { toast } from "sonner";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+// Removed unused Tabs imports
 import { Badge } from "@/components/ui/badge";
 import { 
   Globe, 
@@ -32,8 +32,10 @@ import {
   Phone,
   CheckCircle,
   Palette,
-  Download
+  Download,
+  BarChart3
 } from "lucide-react";
+import Link from "next/link";
 
 const QR_TYPES = [
   { value: "WEBSITE", label: "Website", icon: Globe, description: "Link to a website" },
@@ -57,7 +59,7 @@ const QR_TYPES = [
 ];
 
 export default function GeneratePage() {
-  const router = useRouter();
+  const { isSignedIn } = useUser();
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedType, setSelectedType] = useState<string>("");
   const [qrContent, setQrContent] = useState("");
@@ -66,10 +68,14 @@ export default function GeneratePage() {
     size: 256,
     color: "#000000",
     backgroundColor: "#ffffff",
-    errorCorrection: "M"
+    errorCorrection: "M" as "L" | "M" | "Q" | "H"
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedQRCode, setGeneratedQRCode] = useState<string>("");
+  // Removed unused qrCodeSaved state
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [showLoader, setShowLoader] = useState(false);
+  const [isDownloaded, setIsDownloaded] = useState(false);
 
   const handleTypeSelect = (type: string) => {
     setSelectedType(type);
@@ -89,6 +95,12 @@ export default function GeneratePage() {
     }
 
     setIsGenerating(true);
+    setShowLoader(true);
+    
+    // Add a minimum loader time to prevent flash
+    const minLoaderTime = 1500; // 1.5 seconds minimum
+    const startTime = Date.now();
+    
     try {
       const qrCodeDataURL = await generateQRCode({
         content: qrContent,
@@ -100,34 +112,45 @@ export default function GeneratePage() {
       setGeneratedQRCode(qrCodeDataURL);
       
       // Save QR code to database (if user is authenticated)
-      try {
-        await saveQRCode({
-          content: qrContent,
-          title: qrTitle || "My QR Code",
-          type: selectedType,
-          settings: qrSettings,
-          qrCodeData: qrCodeDataURL,
-        });
-        toast.success("QR code saved to your account!");
-      } catch (saveError) {
-        console.log("QR code not saved (user not authenticated):", saveError);
-        // Continue without saving if user is not authenticated
+      if (isSignedIn) {
+        try {
+          await saveQRCode({
+            content: qrContent,
+            title: qrTitle || "My QR Code",
+            type: selectedType,
+            settings: qrSettings,
+            qrCodeData: qrCodeDataURL,
+          });
+          // QR code saved successfully
+          toast.success("QR code saved to your account!");
+        } catch (saveError) {
+          console.log("QR code not saved:", saveError);
+          toast.error("Failed to save QR code");
+        }
       }
+      
+      // Ensure minimum loader time
+      const elapsedTime = Date.now() - startTime;
+      const remainingTime = Math.max(0, minLoaderTime - elapsedTime);
+      
+      if (remainingTime > 0) {
+        await new Promise(resolve => setTimeout(resolve, remainingTime));
+      }
+      
+      setShowLoader(false);
       
       // Download the QR code
       const filename = `${qrTitle || "qr-code"}.png`;
       downloadQRCode(qrCodeDataURL, filename);
+      setIsDownloaded(true);
       
       toast.success("QR code generated and downloaded!");
-      
-      // Redirect to preview page after a short delay
-      setTimeout(() => {
-        router.push("/preview");
-      }, 2000);
+      setShowSuccess(true);
       
     } catch (error) {
       console.error("Error generating QR code:", error);
       toast.error("Failed to generate QR code. Please try again.");
+      setShowLoader(false);
     } finally {
       setIsGenerating(false);
     }
@@ -211,7 +234,7 @@ export default function GeneratePage() {
         <Card>
           <CardContent className="p-6">
             <div className="space-y-4">
-              <div>
+              <div className="space-y-3">
                 <Label htmlFor="title">QR Code Title (Optional)</Label>
                 <Input
                   id="title"
@@ -221,7 +244,7 @@ export default function GeneratePage() {
                 />
               </div>
 
-              <div>
+              <div className="space-y-3">
                 <Label htmlFor="content">
                   {selectedType === "WEBSITE" && "Website URL"}
                   {selectedType === "TEXT" && "Text Content"}
@@ -243,16 +266,24 @@ export default function GeneratePage() {
                   {selectedType === "PDF" && "PDF URL"}
                 </Label>
                 {selectedType === "SMS" ? (
-                  <div className="space-y-2">
-                    <Input
-                      placeholder="Phone number"
-                      value={qrContent}
-                      onChange={(e) => setQrContent(e.target.value)}
-                    />
-                    <Textarea
-                      placeholder="Message content"
-                      rows={3}
-                    />
+                  <div className="space-y-3">
+                    <div className="space-y-3">
+                      <Label htmlFor="phone">Phone Number</Label>
+                      <Input
+                        id="phone"
+                        placeholder="Phone number"
+                        value={qrContent}
+                        onChange={(e) => setQrContent(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-3">
+                      <Label htmlFor="message">Message Content</Label>
+                      <Textarea
+                        id="message"
+                        placeholder="Message content"
+                        rows={3}
+                      />
+                    </div>
                   </div>
                 ) : (
                   <Input
@@ -283,6 +314,59 @@ export default function GeneratePage() {
     );
   };
 
+  const renderQRScannerLoader = () => (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl p-8 max-w-md mx-auto shadow-2xl">
+        <div className="text-center">
+          <div className="relative w-64 h-64 mx-auto mb-6">
+            {/* Scanner frame */}
+            <div className="absolute inset-0 border-4 border-emerald-500 rounded-lg animate-pulse"></div>
+            
+            {/* Scanning lines animation */}
+            <div className="absolute inset-0 overflow-hidden rounded-lg">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-scan-line"></div>
+              <div className="absolute top-1/4 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-scan-line-delayed"></div>
+              <div className="absolute top-1/2 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-scan-line-delayed-2"></div>
+              <div className="absolute top-3/4 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-scan-line-delayed-3"></div>
+            </div>
+            
+            {/* Corner brackets */}
+            <div className="absolute top-4 left-4 w-8 h-8 border-t-4 border-l-4 border-emerald-500"></div>
+            <div className="absolute top-4 right-4 w-8 h-8 border-t-4 border-r-4 border-emerald-500"></div>
+            <div className="absolute bottom-4 left-4 w-8 h-8 border-b-4 border-l-4 border-emerald-500"></div>
+            <div className="absolute bottom-4 right-4 w-8 h-8 border-b-4 border-r-4 border-emerald-500"></div>
+            
+            {/* QR code pattern simulation */}
+            <div className="absolute inset-4 grid grid-cols-8 gap-1 opacity-20">
+              {Array.from({ length: 64 }).map((_, i) => (
+                <div
+                  key={i}
+                  className={`bg-slate-800 dark:bg-slate-200 ${
+                    Math.random() > 0.5 ? "opacity-100" : "opacity-30"
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+          
+          <h3 className="text-xl font-semibold mb-2 text-slate-900 dark:text-slate-100">
+            Generating QR Code
+          </h3>
+          <p className="text-slate-600 dark:text-slate-400 mb-4">
+            Creating your custom QR code...
+          </p>
+          
+          {/* Progress dots */}
+          <div className="flex justify-center space-x-2">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce"></div>
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   const renderStep3 = () => (
     <div className="space-y-6">
       <div className="text-center mb-8">
@@ -305,7 +389,7 @@ export default function GeneratePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div>
+            <div className="space-y-3">
               <Label htmlFor="size">Size</Label>
               <Select
                 value={qrSettings.size.toString()}
@@ -323,7 +407,7 @@ export default function GeneratePage() {
               </Select>
             </div>
 
-            <div>
+            <div className="space-y-3">
               <Label htmlFor="color">QR Code Color</Label>
               <div className="flex items-center gap-2">
                 <Input
@@ -340,7 +424,7 @@ export default function GeneratePage() {
               </div>
             </div>
 
-            <div>
+            <div className="space-y-3">
               <Label htmlFor="bgColor">Background Color</Label>
               <div className="flex items-center gap-2">
                 <Input
@@ -357,11 +441,11 @@ export default function GeneratePage() {
               </div>
             </div>
 
-            <div>
+            <div className="space-y-3">
               <Label htmlFor="errorCorrection">Error Correction</Label>
               <Select
                 value={qrSettings.errorCorrection}
-                onValueChange={(value) => setQrSettings(prev => ({ ...prev, errorCorrection: value }))}
+                onValueChange={(value: "L" | "M" | "Q" | "H") => setQrSettings(prev => ({ ...prev, errorCorrection: value }))}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -391,11 +475,18 @@ export default function GeneratePage() {
               style={{ width: qrSettings.size, height: qrSettings.size }}
             >
               {generatedQRCode ? (
-                <img 
-                  src={generatedQRCode} 
-                  alt="Generated QR Code" 
-                  className="max-w-full max-h-full"
-                />
+                <div className="w-full h-full flex items-center justify-center">
+                  <div className="w-32 h-32 bg-slate-800 dark:bg-slate-200 rounded grid grid-cols-8 gap-1 p-2">
+                    {Array.from({ length: 64 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className={`bg-slate-200 dark:bg-slate-800 ${
+                          Math.random() > 0.5 ? "opacity-100" : "opacity-30"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
               ) : (
                 <div className="text-slate-400 text-center">
                   <div className="w-16 h-16 mx-auto mb-2 bg-slate-300 dark:bg-slate-600 rounded"></div>
@@ -416,26 +507,89 @@ export default function GeneratePage() {
         </Card>
       </div>
 
-      <div className="flex justify-center">
-        <Button 
-          onClick={handleCreate} 
-          size="lg" 
-          className="px-8"
-          disabled={isGenerating}
-        >
-          {isGenerating ? (
-            <>
-              <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              Generating...
-            </>
-          ) : (
-            <>
-              <Download className="mr-2 h-4 w-4" />
-              Create QR Code
-            </>
-          )}
-        </Button>
+      <div className="flex flex-col sm:flex-row gap-4 justify-center">
+        {!isDownloaded ? (
+          <Button 
+            onClick={handleCreate} 
+            size="lg" 
+            className="px-8"
+            disabled={isGenerating}
+          >
+            {isGenerating ? (
+              <>
+                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Download className="mr-2 h-4 w-4" />
+                Create QR Code
+              </>
+            )}
+          </Button>
+        ) : (
+          <Button 
+            onClick={() => {
+              if (generatedQRCode) {
+                const filename = `${qrTitle || "qr-code"}.png`;
+                downloadQRCode(generatedQRCode, filename);
+                toast.success("QR code downloaded again!");
+              }
+            }}
+            size="lg" 
+            className="px-8"
+            disabled={true}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            QR Code Downloaded
+          </Button>
+        )}
+        
+        {isDownloaded && isSignedIn && (
+          <Button 
+            asChild
+            size="lg" 
+            variant="outline"
+            className="px-8"
+          >
+            <Link href="/dashboard">
+              <BarChart3 className="mr-2 h-4 w-4" />
+              Manage QR Codes
+            </Link>
+          </Button>
+        )}
+        
+        {isDownloaded && !isSignedIn && (
+          <Button 
+            asChild
+            size="lg" 
+            variant="outline"
+            className="px-8"
+          >
+            <Link href="/sign-up">
+              <User className="mr-2 h-4 w-4" />
+              Create Account
+            </Link>
+          </Button>
+        )}
       </div>
+
+      {showSuccess && (
+        <div className="mt-8 p-6 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+          <div className="flex items-center gap-3">
+            <CheckCircle className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+            <div>
+              <h3 className="font-semibold text-emerald-900 dark:text-emerald-100">
+                QR Code Created Successfully!
+              </h3>
+              <p className="text-sm text-emerald-700 dark:text-emerald-300">
+                Your QR code has been generated and downloaded. 
+                {isSignedIn ? " It's also been saved to your account." : " Create an account to save and manage your QR codes."}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -448,6 +602,8 @@ export default function GeneratePage() {
         {currentStep === 2 && renderStep2()}
         {currentStep === 3 && renderStep3()}
       </div>
+      
+      {showLoader && renderQRScannerLoader()}
     </div>
   );
 }
