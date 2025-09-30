@@ -13,37 +13,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  clerkId   String   @unique
-  username  String?  @unique
-  email     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  qrCodes QRCode[]
-
-  @@map("users")
-}
-
-model QRCode {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId      String?  @db.ObjectId
-  type        QRType
-  title       String
-  content     String
-  qrCodeData  String   // Base64 encoded QR code image
-  settings    Json     // QR code customization settings
-  downloadCount Int    @default(0)
-  scanCount   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  user User? @relation(fields: [userId], references: [id])
-
-  @@map("qrcodes")
-}
-
+// enums
 enum QRType {
   WEBSITE
   PDF
@@ -54,6 +24,7 @@ enum QRType {
   FACEBOOK
   INSTAGRAM
   SOCIAL_MEDIA
+  LIST_OF_LINKS
   WHATSAPP
   MP3
   MENU
@@ -64,4 +35,108 @@ enum QRType {
   EMAIL
   SMS
   PHONE
+}
+
+enum FileFormat {
+  PNG
+  JPG
+  JPEG
+  SVG
+  PDF
+}
+
+enum ActivityType {
+  CREATE
+  UPDATE
+  DELETE
+  DOWNLOAD
+  SCAN
+}
+
+// models
+model User {
+  id             String        @id @default(auto()) @map("_id") @db.ObjectId
+  clerkUserId    String        @unique
+  email          String?
+  plan           String        @default("free") // app-defined plan name
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  subscriptions  Subscription[]
+  qrCodes        QRCode[]
+  activities     Activity[]
+}
+
+model Subscription {
+  id             String     @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String     @db.ObjectId
+  user           User       @relation(fields: [userId], references: [id])
+
+  plan           String     // e.g. "free", "pro", "enterprise"
+  status         String     // "active", "canceled", "expired"
+  startDate      DateTime   @default(now())
+  endDate        DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+}
+
+model QRCode {
+  id             String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String        @db.ObjectId
+  user           User          @relation(fields: [userId], references: [id])
+
+  type           QRType
+  data           Json
+  design         Json?
+  slug           String        @unique
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  scans          Scan[]
+  downloads      QRDownload[]
+  activities     Activity[]
+}
+
+model Scan {
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  qrCodeId       String    @db.ObjectId
+  qrCode         QRCode    @relation(fields: [qrCodeId], references: [id])
+
+  createdAt      DateTime  @default(now())
+  ip             String
+  userAgent      String
+  location       Json?     // { city, country, lat, lng }
+
+  activities     Activity[]
+}
+
+model QRDownload {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  qrCodeId       String       @db.ObjectId
+  qrCode         QRCode       @relation(fields: [qrCodeId], references: [id])
+
+  fileFormat     FileFormat
+  createdAt      DateTime     @default(now())
+
+  activities     Activity[]
+}
+
+model Activity {
+  id             String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String        @db.ObjectId
+  user           User          @relation(fields: [userId], references: [id])
+
+  type           ActivityType
+  description    String?       // e.g. "User scanned QR code", "QR updated"
+  createdAt      DateTime      @default(now())
+
+  // optional links (not all will be populated depending on activity type)
+  qrCodeId       String?       @db.ObjectId
+  qrCode         QRCode?       @relation(fields: [qrCodeId], references: [id])
+
+  scanId         String?       @db.ObjectId
+  scan           Scan?         @relation(fields: [scanId], references: [id])
+
+  downloadId     String?       @db.ObjectId
+  download       QRDownload?   @relation(fields: [downloadId], references: [id])
 }
