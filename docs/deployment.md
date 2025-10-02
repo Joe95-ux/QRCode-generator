@@ -28,7 +28,7 @@ Create a `.env.local` file in your project root with the following variables:
 
 ```env
 # Database Configuration
-DATABASE_URL="mongodb+srv://username:password@cluster.mongodb.net/qrcode-generator?retryWrites=true&w=majority"
+
 
 # Authentication (Clerk)
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="pk_test_..."
@@ -51,7 +51,7 @@ For production deployment, configure these variables in your Vercel dashboard:
 
 ```env
 # Database (Production)
-DATABASE_URL="mongodb+srv://prod-username:prod-password@prod-cluster.mongodb.net/qrcode-generator-prod?retryWrites=true&w=majority"
+
 
 # Authentication (Production)
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="pk_live_..."
